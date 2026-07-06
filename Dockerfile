@@ -5,9 +5,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o /runner-webhook .
 
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates kubectl
-COPY --from=builder /runner-webhook /usr/local/bin/runner-webhook
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /runner-webhook /runner-webhook
 EXPOSE 8080
-USER nobody
-ENTRYPOINT ["runner-webhook"]
+USER 65532
+ENTRYPOINT ["/runner-webhook"]

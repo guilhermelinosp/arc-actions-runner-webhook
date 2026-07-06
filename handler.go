@@ -1,22 +1,82 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
-	"os"
-	"os/exec"
-	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-func handleWebhook(w http.ResponseWriter, r *http.Request) {
+type runnerResponse struct {
+	OK      bool   `json:"ok"`
+	Exists  string `json:"exists,omitempty"`
+	Skipped string `json:"skipped,omitempty"`
+	Runner  string `json:"runner,omitempty"`
+}
+
+type webhookPayload struct {
+	Action     string     `json:"action"`
+	Repository *repoInfo  `json:"repository"`
+}
+
+type repoInfo struct {
+	FullName string  `json:"full_name"`
+	Name     string  `json:"name"`
+	Owner    *ownerInfo `json:"owner"`
+}
+
+type ownerInfo struct {
+	Login string `json:"login"`
+}
+
+var (
+	eventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "webhook_events_total",
+		Help: "Total webhook events processed.",
+	}, []string{"event", "status"})
+
+	creationDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "runner_creation_duration_seconds",
+		Help:    "Time to create runner resources.",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10},
+	})
+
+	runnersActive = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "runners_active_total",
+		Help: "Number of active runners.",
+	})
+)
+
+func newWebhookHandler(kc *k8sController) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("runner-controller: ok"))
+
+		case http.MethodPost:
+			handleWebhook(w, r, kc)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func handleWebhook(w http.ResponseWriter, r *http.Request, kc *k8sController) {
+	start := time.Now()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		slog.Error("read body", "error", err)
 		http.Error(w, "read error", http.StatusBadRequest)
 		return
 	}
@@ -24,13 +84,14 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	sig := r.Header.Get("X-Hub-Signature-256")
 	event := r.Header.Get("X-GitHub-Event")
 
-	// signature verification
+	// HMAC verification
 	if webhookSec != "" && sig != "" {
 		mac := hmac.New(sha256.New, []byte(webhookSec))
 		mac.Write(body)
 		expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 		if !hmac.Equal([]byte(expected), []byte(sig)) {
-			log.Printf("invalid signature from %s", r.RemoteAddr)
+			slog.Warn("invalid signature", "remote", r.RemoteAddr)
+			eventsTotal.WithLabelValues(event, "unauthorized").Inc()
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -38,27 +99,22 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	switch event {
 	case "ping":
+		eventsTotal.WithLabelValues("ping", "ok").Inc()
 		writeJSON(w, http.StatusOK, runnerResponse{OK: true})
 		return
+
 	case "repository":
 		// handle below
+
 	default:
+		eventsTotal.WithLabelValues(event, "ignored").Inc()
 		writeJSON(w, http.StatusOK, runnerResponse{OK: true})
 		return
 	}
 
-	var payload struct {
-		Action     string `json:"action"`
-		Repository *struct {
-			FullName string `json:"full_name"`
-			Name     string `json:"name"`
-			Owner    *struct {
-				Login string `json:"login"`
-			} `json:"owner"`
-		} `json:"repository"`
-	}
+	var payload webhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		log.Printf("json decode error: %v", err)
+		slog.Error("json decode", "error", err)
 		http.Error(w, "bad payload", http.StatusBadRequest)
 		return
 	}
@@ -75,58 +131,58 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if repo.Owner.Login != owner {
-		log.Printf("skipping repo %s: owner %s != %s", repo.FullName, repo.Owner.Login, owner)
+		slog.Info("skipping: owner mismatch",
+			"repo", repo.FullName, "owner", repo.Owner.Login, "expected", owner,
+		)
+		eventsTotal.WithLabelValues("repository", "owner_mismatch").Inc()
 		writeJSON(w, http.StatusOK, runnerResponse{OK: true})
 		return
 	}
 
 	fullName := repo.FullName
-	log.Printf("webhook: repo created → %s", fullName)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
 
-	// check if runner already exists
-	exists, err := runnerExists(fullName)
+	slog.Info("webhook: repo created", "repo", fullName)
+
+	// Check if runner already exists
+	exists, err := kc.runnerExists(ctx, fullName)
 	if err != nil {
-		log.Printf("error checking runner: %v", err)
+		slog.Error("check runner", "repo", fullName, "error", err)
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
 	}
 	if exists {
-		log.Printf("runner already exists for %s", fullName)
+		slog.Info("runner already exists", "repo", fullName)
+		eventsTotal.WithLabelValues("repository", "exists").Inc()
 		writeJSON(w, http.StatusOK, runnerResponse{OK: true, Exists: fullName})
 		return
 	}
 
-	if err := createRunner(fullName, repo.Name); err != nil {
-		log.Printf("error creating runner for %s: %v", fullName, err)
+	// Create runner
+	creationTimer := prometheus.NewTimer(creationDuration)
+	err = kc.createRunner(ctx, fullName, repo.Name)
+	creationTimer.ObserveDuration()
+
+	if err != nil {
+		slog.Error("create runner", "repo", fullName, "error", err)
+		eventsTotal.WithLabelValues("repository", "error").Inc()
 		http.Error(w, "create error", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("runner created for %s", fullName)
+	runnersActive.Inc()
+	eventsTotal.WithLabelValues("repository", "created").Inc()
+	slog.Info("runner created", "repo", fullName,
+		"duration", time.Since(start).String(),
+	)
 	writeJSON(w, http.StatusOK, runnerResponse{OK: true, Runner: fullName})
 }
 
-func runnerExists(fullName string) (bool, error) {
-	cmd := exec.Command("kubectl", "get", "runnerdeployment",
-		"-n", namespace,
-		"-o", "jsonpath={.items[*].spec.template.spec.repository}")
-	out, err := cmd.Output()
-	if err != nil {
-		return false, fmt.Errorf("kubectl get runnerdeployment: %w", err)
-	}
-	repos := strings.Fields(string(out))
-	for _, r := range repos {
-		if r == fullName {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func hasWorkflows(fullName string) (bool, error) {
-	token := os.Getenv("GITHUB_TOKEN")
+	token := gitToken
 	if token == "" {
-		return true, nil // skip check if no token
+		return true, nil
 	}
 
 	req, err := http.NewRequest("GET",
@@ -134,73 +190,25 @@ func hasWorkflows(fullName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "token "+token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "runner-controller")
 
+	// Reuse default client
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
 		return true, nil
-	}
-	if resp.StatusCode == http.StatusNotFound {
+	case http.StatusNotFound:
 		return false, nil
+	default:
+		return false, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
-	return false, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-}
-
-func createRunner(fullName, repoName string) error {
-	safeName := strings.NewReplacer(".", "-", "_", "-").Replace(strings.ToLower(repoName))
-	manifest := fmt.Sprintf(`---
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: runner-%s
-  namespace: %s
-spec:
-  replicas: 1
-  template:
-    spec:
-      repository: %s
-      image: %s
-      dockerdWithinRunnerContainer: false
-      resources:
-        limits:
-          cpu: "1"
-          memory: 2Gi
-        requests:
-          cpu: 100m
-          memory: 256Mi
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: runner-%s-autoscaler
-  namespace: %s
-spec:
-  scaleTargetRef:
-    name: runner-%s
-    kind: RunnerDeployment
-  minReplicas: 0
-  maxReplicas: 5
-  metrics:
-    - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
-      repositoryNames:
-        - %s
-`, safeName, namespace, fullName, runnerImg,
-		safeName, namespace, safeName, fullName)
-
-	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(manifest)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("kubectl apply: %w\n%s", err, out)
-	}
-	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -208,3 +216,5 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
+
