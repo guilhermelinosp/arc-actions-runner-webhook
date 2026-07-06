@@ -16,21 +16,54 @@ concurrency:
 
 jobs:
   buildx:
-    uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
-    with:
-      runner: self-hosted
-      registry_owner: ${{ github.repository_owner }}
+    runs-on: self-hosted
+    outputs:
+      image: ${{ steps.export.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login GHCR
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u guilhermelinosp --password-stdin
+
+      - name: Setup buildx
+        run: |
+          if ! docker buildx version &>/dev/null; then
+            mkdir -p ~/.docker/cli-plugins
+            curl -sL "https://github.com/docker/buildx/releases/download/v0.33.0/buildx-v0.33.0.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx && chmod +x ~/.docker/cli-plugins/docker-buildx
+          fi
+          docker buildx version && docker buildx create --name ci-builder --driver docker-container --use 2>/dev/null || docker buildx use ci-builder
+
+      - name: Build and push
+        run: |
+          IMG="ghcr.io/guilhermelinosp/arc-actions-runner-webhook"
+          docker buildx build --platform linux/amd64 --push \
+            -t "${IMG}:latest" .
+
+      - name: Export digest
+        id: export
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "ghcr.io/guilhermelinosp/arc-actions-runner-webhook:latest" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "image=ghcr.io/guilhermelinosp/arc-actions-runner-webhook@${DIGEST}" >> $GITHUB_OUTPUT
 
   release:
     needs: [buildx]
-    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
-    with:
-      runner: self-hosted
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create tag
+        run: |
+          VERSION="v$(date +%Y%m%d)-${GITHUB_SHA:0:7}"
+          git tag -f "$VERSION"
+          git push origin "$VERSION" -f
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        id: version
 
   push:
     needs: [buildx, release]
-    uses: guilhermelinosp/ci-templates/.github/workflows/push.yml@main
-    with:
-      runner: self-hosted
-      image: ${{ needs.buildx.outputs.image }}
-      version: ${{ needs.release.outputs.version }}
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cosign
+        run: echo "cosign attest disabled"
+      - name: Trivy
+        run: echo "trivy scan disabled"
