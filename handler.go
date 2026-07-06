@@ -96,17 +96,6 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check if repo has workflows
-	has, err := hasWorkflows(fullName)
-	if err != nil {
-		log.Printf("error checking workflows for %s: %v", fullName, err)
-	}
-	if !has {
-		log.Printf("no workflows in %s, skipping", fullName)
-		writeJSON(w, http.StatusOK, runnerResponse{OK: true, Skipped: fullName})
-		return
-	}
-
 	if err := createRunner(fullName, repo.Name); err != nil {
 		log.Printf("error creating runner for %s: %v", fullName, err)
 		http.Error(w, "create error", http.StatusInternalServerError)
