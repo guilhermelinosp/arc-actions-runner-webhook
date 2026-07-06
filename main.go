@@ -18,7 +18,7 @@ import (
 var (
 	namespace  = env("NAMESPACE", "arc-actions")
 	owner      = env("OWNER", "guilhermelinosp")
-	runnerImg  = env("RUNNER_IMAGE", "ghcr.io/guilhermelinosp/arc-runner:latest")
+	runnerImg  = env("RUNNER_IMAGE", "ghcr.io/guilhermelinosp/arc-actions-runner:latest")
 	webhookSec = env("WEBHOOK_SECRET", "")
 	gitToken   = env("GITHUB_TOKEN", "")
 	port       = env("PORT", "8080")
