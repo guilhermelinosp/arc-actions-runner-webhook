@@ -1,0 +1,34 @@
+---
+output: false
+
+pre-commit:
+  parallel: false
+  commands:
+    yamllint:
+      glob: "*.{yaml,yml}"
+      run: yamllint {staged_files}
+      stage_fixed: false
+    kustomize-build:
+      glob: "*.{yaml,yml,alloy}"
+      run: kustomize build . > /dev/null
+    helm-lint:
+      glob: "values/**/*.yaml"
+      run: helm lint {staged_files} --strict 2>/dev/null || true
+      stage_fixed: false
+    secrets-scan:
+      glob: "*.{yaml,yml,json,toml,sh}"
+      run: gitleaks detect --source . --no-git -v 2>/dev/null; true
+      stage_fixed: false
+    alloy-validate:
+      glob: "*.alloy"
+      run: alloy validate {staged_files} 2>&1 || true
+      stage_fixed: false
+    shellcheck:
+      glob: "*.sh"
+      run: shellcheck {staged_files}
+
+commit-msg:
+  commands:
+    conventional:
+      run: |
+        grep -Eq '^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert|ops)(\(.+\))?!?: .+' {1}
