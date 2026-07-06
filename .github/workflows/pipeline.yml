@@ -47,23 +47,23 @@ jobs:
 
   release:
     needs: [buildx]
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create tag
-        run: |
-          VERSION="v$(date +%Y%m%d)-${GITHUB_SHA:0:7}"
-          git tag -f "$VERSION"
-          git push origin "$VERSION" -f
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-        id: version
+    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
+    with:
+      runner: self-hosted
 
   push:
     needs: [buildx, release]
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      - name: Cosign
-        run: echo "cosign attest disabled"
-      - name: Trivy
-        run: echo "trivy scan disabled"
+      - name: Login GHCR
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u guilhermelinosp --password-stdin
+
+      - name: Promote tags
+        run: |
+          SRC="${{ needs.buildx.outputs.image }}"
+          DST="ghcr.io/guilhermelinosp/arc-actions-runner-webhook"
+          docker buildx imagetools create --tag "$DST:latest" --tag "$DST:${GITHUB_SHA::7}" "$SRC"
+          TAG="${{ needs.release.outputs.version }}"
+          if [ -n "$TAG" ]; then
+            docker buildx imagetools create --tag "$DST:$TAG" "$SRC"
+          fi
