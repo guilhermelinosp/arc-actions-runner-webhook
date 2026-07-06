@@ -16,34 +16,11 @@ concurrency:
 
 jobs:
   buildx:
-    runs-on: self-hosted
-    outputs:
-      image: ${{ steps.export.outputs.image }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login GHCR
-        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u guilhermelinosp --password-stdin
-
-      - name: Setup buildx
-        run: |
-          if ! docker buildx version &>/dev/null; then
-            mkdir -p ~/.docker/cli-plugins
-            curl -sL "https://github.com/docker/buildx/releases/download/v0.33.0/buildx-v0.33.0.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx && chmod +x ~/.docker/cli-plugins/docker-buildx
-          fi
-          docker buildx version && docker buildx create --name ci-builder --driver docker-container --use 2>/dev/null || docker buildx use ci-builder
-
-      - name: Build and push
-        run: |
-          IMG="ghcr.io/guilhermelinosp/arc-actions-runner-webhook"
-          docker buildx build --platform linux/amd64 --push \
-            -t "${IMG}:latest" .
-
-      - name: Export digest
-        id: export
-        run: |
-          DIGEST=$(docker buildx imagetools inspect "ghcr.io/guilhermelinosp/arc-actions-runner-webhook:latest" --format '{{json .Manifest.Digest}}' | tr -d '"')
-          echo "image=ghcr.io/guilhermelinosp/arc-actions-runner-webhook@${DIGEST}" >> $GITHUB_OUTPUT
+    uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
+    secrets: inherit
+    with:
+      runner: self-hosted
+      registry_owner: ${{ github.repository_owner }}
 
   release:
     needs: [buildx]
@@ -53,17 +30,9 @@ jobs:
 
   push:
     needs: [buildx, release]
-    runs-on: self-hosted
-    steps:
-      - name: Login GHCR
-        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u guilhermelinosp --password-stdin
-
-      - name: Promote tags
-        run: |
-          SRC="${{ needs.buildx.outputs.image }}"
-          DST="ghcr.io/guilhermelinosp/arc-actions-runner-webhook"
-          docker buildx imagetools create --tag "$DST:latest" --tag "$DST:${GITHUB_SHA::7}" "$SRC"
-          TAG="${{ needs.release.outputs.version }}"
-          if [ -n "$TAG" ]; then
-            docker buildx imagetools create --tag "$DST:$TAG" "$SRC"
-          fi
+    uses: guilhermelinosp/ci-templates/.github/workflows/push.yml@main
+    secrets: inherit
+    with:
+      runner: self-hosted
+      image: ${{ needs.buildx.outputs.image }}
+      version: ${{ needs.release.outputs.version }}
