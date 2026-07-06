@@ -1,0 +1,36 @@
+name: pipeline
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  security-events: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  buildx:
+    uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
+    with:
+      runner: self-hosted
+      registry_owner: ${{ github.repository_owner }}
+
+  release:
+    needs: [buildx]
+    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
+    with:
+      runner: self-hosted
+
+  push:
+    needs: [buildx, release]
+    uses: guilhermelinosp/ci-templates/.github/workflows/push.yml@main
+    with:
+      runner: self-hosted
+      image: ${{ needs.buildx.outputs.image }}
+      version: ${{ needs.release.outputs.version }}
