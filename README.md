@@ -2,29 +2,36 @@
 
 Webhook controller para criar automaticamente runners ARC quando novos repositórios são criados em `guilhermelinosp`.
 
-## Função
-
-Recebe webhooks do GitHub (`repository.created`) e cria `RunnerDeployment` + `HorizontalRunnerAutoscaler` no cluster para o novo repositório.
-
 ## Stack
 
-- **Linguagem:** Go (stdlib only, zero dependências externas)
-- **Imagem:** `ghcr.io/guilhermelinosp/arc-actions-runner-webhook:latest` (22MB multi-stage)
-- **K8s:** kubectl embedado para criar CRDs do ARC
+- **Linguagem:** Go + `client-go` (K8s dynamic client)
+- **Imagem:** `ghcr.io/guilhermelinosp/arc-actions-runner-webhook:latest` (13MB distroless/static)
+- **K8s:** dynamic client via `k8s.io/client-go` (sem kubectl)
+- **Logs:** JSON estruturado via `log/slog`
+- **Métricas:** Prometheus em `:9090/metrics`
 
 ## Endpoints
 
-| Método | Rota | Descrição |
+| Porta | Rota | Descrição |
 |---|---|---|
-| `GET /` | Health check | `runner-controller: ok` |
-| `POST /` | Webhook GitHub | `repository.created` |
+| `8080` | `GET /` | Health check → `runner-controller: ok` |
+| `8080` | `POST /` | Webhook GitHub `repository.created` |
+| `9090` | `GET /metrics` | Prometheus metrics |
+
+## Métricas
+
+| Nome | Tipo | Labels |
+|---|---|---|
+| `webhook_events_total` | Counter | `event`, `status` |
+| `runner_creation_duration_seconds` | Histogram | — |
+| `runners_active_total` | Gauge | — |
 
 ## Variáveis de ambiente
 
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `WEBHOOK_SECRET` | `""` | Secret para validar HMAC-SHA256 |
-| `GITHUB_TOKEN` | `""` | Token para GitHub API |
+| `GITHUB_TOKEN` | `""` | Token para GitHub API (workflows check) |
 | `NAMESPACE` | `arc-actions` | Namespace dos runners |
 | `OWNER` | `guilhermelinosp` | Dono do repositório |
 | `RUNNER_IMAGE` | `ghcr.io/guilhermelinosp/arc-runner:latest` | Imagem do runner |
@@ -33,7 +40,7 @@ Recebe webhooks do GitHub (`repository.created`) e cria `RunnerDeployment` + `Ho
 ## Pipeline
 
 Push na main → `ci-templates`:
-1. **buildx** — build + push imagem
+1. **buildx** — build + push imagem (multi-arch amd64)
 2. **release** — semver bump + GitHub Release
 3. **push** — tag image com versão
 
