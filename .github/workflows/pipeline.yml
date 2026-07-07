@@ -3,14 +3,18 @@ name: pipeline
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"
 
 jobs:
   buildx:
+    if: startsWith(github.ref, 'refs/tags/v')
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
     secrets: inherit
 
 
   release:
+    secrets: inherit
     if: github.ref == 'refs/heads/main'
     needs: [buildx]
     uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
