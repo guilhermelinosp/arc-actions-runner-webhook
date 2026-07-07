@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
 
+
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   buildx:
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
