@@ -11,6 +11,7 @@ jobs:
 
 
   release:
+    if: github.ref == 'refs/heads/main'
     needs: [buildx]
     uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
 
