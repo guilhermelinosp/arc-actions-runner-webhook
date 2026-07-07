@@ -4,14 +4,6 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  id-token: write
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   buildx:
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
