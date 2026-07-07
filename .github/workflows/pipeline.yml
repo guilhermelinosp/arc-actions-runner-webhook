@@ -5,15 +5,14 @@ on:
     branches: [main]
 
 jobs:
+  release:
+    secrets: inherit
+    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
+
   buildx:
     needs: [release]
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
     secrets: inherit
-
-
-  release:
-    secrets: inherit
-    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
 
   push:
     needs: [buildx, release]
