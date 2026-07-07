@@ -15,6 +15,9 @@ pre-commit:
       glob: "values/**/*.yaml"
       run: helm lint {staged_files} --strict 2>/dev/null || true
       stage_fixed: false
+    hadolint:
+      glob: "Dockerfile*"
+      run: hadolint {staged_files}
     secrets-scan:
       glob: "*.{yaml,yml,json,toml,sh}"
       run: gitleaks detect --source . --no-git -v 2>/dev/null; true
