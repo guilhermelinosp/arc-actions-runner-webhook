@@ -8,8 +8,7 @@ jobs:
   buildx:
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
     secrets: inherit
-    with:
-      registry_owner: ${{ github.repository_owner }}
+
 
   release:
     needs: [buildx]
