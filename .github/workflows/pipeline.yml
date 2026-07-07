@@ -4,16 +4,6 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  packages: write
-  id-token: write
-  security-events: write
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   buildx:
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
@@ -24,7 +14,6 @@ jobs:
   release:
     needs: [buildx]
     uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
-    with:
 
   push:
     needs: [buildx, release]
