@@ -34,7 +34,7 @@ Webhook controller para criar automaticamente runners ARC quando novos repositó
 | `GITHUB_TOKEN` | `""` | Token para GitHub API (workflows check) |
 | `NAMESPACE` | `arc-actions` | Namespace dos runners |
 | `OWNER` | `guilhermelinosp` | Dono do repositório |
-| `RUNNER_IMAGE` | `ghcr.io/guilhermelinosp/arc-runner:latest` | Imagem do runner |
+| `RUNNER_IMAGE` | `ghcr.io/guilhermelinosp/arc-actions-runner:latest` | Imagem do runner |
 | `PORT` | `8080` | Porta HTTP |
 
 ## Pipeline
