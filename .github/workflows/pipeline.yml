@@ -19,20 +19,17 @@ jobs:
     uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
     secrets: inherit
     with:
-      runner: self-hosted
       registry_owner: ${{ github.repository_owner }}
 
   release:
     needs: [buildx]
     uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
     with:
-      runner: self-hosted
 
   push:
     needs: [buildx, release]
     uses: guilhermelinosp/ci-templates/.github/workflows/push.yml@main
     secrets: inherit
     with:
-      runner: self-hosted
       image: ${{ needs.buildx.outputs.image }}
       version: ${{ needs.release.outputs.version }}
