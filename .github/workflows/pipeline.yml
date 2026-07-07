@@ -20,4 +20,4 @@ jobs:
     secrets: inherit
     with:
       image: ${{ needs.buildx.outputs.image }}
-      version: ${{ github.ref_name }}
+      version: ${{ needs.release.outputs.version }}
