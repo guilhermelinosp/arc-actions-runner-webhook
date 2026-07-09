@@ -101,7 +101,7 @@ func (kc *k8sController) createRunner(ctx context.Context, fullName, repoName st
 					"name": "runner-" + safeName,
 					"kind": "RunnerDeployment",
 				},
-				"minReplicas": 0,
+				"minReplicas": 1,
 				"maxReplicas": 5,
 				"metrics": []interface{}{
 					map[string]interface{}{
