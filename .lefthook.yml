@@ -1,37 +1,25 @@
----
 output: false
-
 pre-commit:
-  parallel: false
   commands:
-    yamllint:
-      glob: "*.{yaml,yml}"
-      run: yamllint {staged_files}
-      stage_fixed: false
-    kustomize-build:
-      glob: "*.{yaml,yml,alloy}"
-      run: kustomize build . > /dev/null
-    helm-lint:
-      glob: "values/**/*.yaml"
-      run: helm lint {staged_files} --strict 2>/dev/null || true
-      stage_fixed: false
-    hadolint:
-      glob: "Dockerfile*"
-      run: hadolint {staged_files}
-    secrets-scan:
-      glob: "*.{yaml,yml,json,toml,sh}"
-      run: gitleaks detect --source . --no-git -v 2>/dev/null; true
-      stage_fixed: false
-    alloy-validate:
-      glob: "*.alloy"
-      run: alloy validate {staged_files} 2>&1 || true
-      stage_fixed: false
-    shellcheck:
-      glob: "*.sh"
-      run: shellcheck {staged_files}
-
+    format:
+      glob: "{**/*.cs,**/*.yaml,**/*.yml,**/*.json,**/*.xml}"
+      exclude:
+        - "**/bin/**"
+        - "**/obj/**"
+        - "**/node_modules/**"
+      run: |
+        SOLN=$(ls *.sln *.slnx 2>/dev/null | head -1)
+        if [ -n "$SOLN" ]; then dotnet format "$SOLN" --verbosity quiet --no-restore 2>/dev/null; fi
+    build:
+      run: |
+        SOLN=$(ls *.sln *.slnx app/*.sln app/*.slnx 2>/dev/null | head -1)
+        if [ -n "$SOLN" ]; then dotnet build "$SOLN" -c release --nologo 2>/dev/null; fi
+    coverage:
+      run: |
+        SOLN=$(ls *.sln *.slnx app/*.sln app/*.slnx 2>/dev/null | head -1)
+        if [ -n "$SOLN" ]; then dotnet test "$SOLN" -c release --nologo --verbosity quiet /p:CollectCoverage=true /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total 2>/dev/null; fi
 commit-msg:
   commands:
     conventional:
       run: |
-        grep -Eq '^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert|ops)(\(.+\))?!?: .+' {1}
+        grep -Eq '^(feat|fix|docs|style|ref|perf|test|ci|chore|rev)(\(.+\))?!?: .+' {1}
