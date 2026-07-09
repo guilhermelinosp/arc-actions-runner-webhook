@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	namespace  = env("NAMESPACE", "arc-actions")
-	owner      = env("OWNER", "guilhermelinosp")
-	runnerImg  = env("RUNNER_IMAGE", "ghcr.io/guilhermelinosp/arc-actions-runner:latest")
-	webhookSec = env("WEBHOOK_SECRET", "")
-	gitToken   = env("GITHUB_TOKEN", "")
-	port       = env("PORT", "8080")
+	namespace      = env("NAMESPACE", "arc-actions")
+	owner          = env("OWNER", "guilhermelinosp")
+	runnerImg      = env("RUNNER_IMAGE", "ghcr.io/guilhermelinosp/arc-actions-runner:latest")
+	pullSecretName = env("IMAGE_PULL_SECRET", "ghcr-pull")
+	webhookSec     = env("WEBHOOK_SECRET", "")
+	gitToken       = env("GITHUB_TOKEN", "")
+	port           = env("PORT", "8080")
 )
 
 func env(key, fallback string) string {
@@ -59,10 +60,11 @@ func main() {
 	}
 
 	kc := &k8sController{
-		dynClient: dynClient,
-		k8sClient: k8sClient,
-		namespace: namespace,
-		runnerImg: runnerImg,
+		dynClient:      dynClient,
+		k8sClient:      k8sClient,
+		namespace:      namespace,
+		runnerImg:      runnerImg,
+		pullSecretName: pullSecretName,
 	}
 
 	// Metrics

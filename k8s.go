@@ -27,10 +27,11 @@ var (
 )
 
 type k8sController struct {
-	dynClient dynamic.Interface
-	k8sClient kubernetes.Interface
-	namespace string
-	runnerImg string
+	dynClient      dynamic.Interface
+	k8sClient      kubernetes.Interface
+	namespace      string
+	runnerImg      string
+	pullSecretName string
 }
 
 func (kc *k8sController) runnerExists(ctx context.Context, fullName string) (bool, error) {
@@ -64,6 +65,11 @@ func (kc *k8sController) createRunner(ctx context.Context, fullName, repoName st
 					"spec": map[string]interface{}{
 						"repository":                   fullName,
 						"image":                        kc.runnerImg,
+						"imagePullSecrets": []interface{}{
+							map[string]interface{}{
+								"name": kc.pullSecretName,
+							},
+						},
 						"dockerdWithinRunnerContainer": false,
 						"labels":                       []interface{}{"arc-runner"},
 						"resources": map[string]interface{}{
