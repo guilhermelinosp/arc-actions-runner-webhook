@@ -96,7 +96,13 @@ func (kc *k8sController) createRunner(ctx context.Context, fullName, repoName st
 							},
 						},
 						"dockerdWithinRunnerContainer": false,
-						"affinity":                     runnerAffinity(),
+						"env": []interface{}{
+							map[string]interface{}{
+								"name":  "DOCKER_ENABLED",
+								"value": "false",
+							},
+						},
+						"affinity": runnerAffinity(),
 						"labels":                       []interface{}{"arc-runner"},
 						"resources": map[string]interface{}{
 							"limits": map[string]interface{}{
