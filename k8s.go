@@ -26,6 +26,31 @@ var (
 	}
 )
 
+// runnerAffinity spreads dind-backed runners across nodes to avoid
+// containerd startup contention when many docker:dind sidecars co-locate.
+func runnerAffinity() map[string]interface{} {
+	return map[string]interface{}{
+		"podAntiAffinity": map[string]interface{}{
+			"preferredDuringSchedulingIgnoredDuringExecution": []interface{}{
+				map[string]interface{}{
+					"weight": int64(100),
+					"podAffinityTerm": map[string]interface{}{
+						"labelSelector": map[string]interface{}{
+							"matchExpressions": []interface{}{
+								map[string]interface{}{
+									"key":      "actions-runner",
+									"operator": "Exists",
+								},
+							},
+						},
+						"topologyKey": "kubernetes.io/hostname",
+					},
+				},
+			},
+		},
+	}
+}
+
 type k8sController struct {
 	dynClient      dynamic.Interface
 	k8sClient      kubernetes.Interface
@@ -71,6 +96,7 @@ func (kc *k8sController) createRunner(ctx context.Context, fullName, repoName st
 							},
 						},
 						"dockerdWithinRunnerContainer": false,
+						"affinity":                     runnerAffinity(),
 						"labels":                       []interface{}{"arc-runner"},
 						"resources": map[string]interface{}{
 							"limits": map[string]interface{}{
