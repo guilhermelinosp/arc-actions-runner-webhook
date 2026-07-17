@@ -96,10 +96,10 @@ func (kc *k8sController) createRunner(ctx context.Context, fullName, repoName st
 							},
 						},
 						"dockerdWithinRunnerContainer": false,
-						"env": []interface{}{
+						"volumes": []interface{}{
 							map[string]interface{}{
-								"name":  "DOCKER_ENABLED",
-								"value": "false",
+								"name": "var-run",
+								"emptyDir": map[string]interface{}{},
 							},
 						},
 						"affinity": runnerAffinity(),
