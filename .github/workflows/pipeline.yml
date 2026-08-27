@@ -7,16 +7,16 @@ on:
 jobs:
   release:
     secrets: inherit
-    uses: guilhermelinosp/ci-templates/.github/workflows/release.yml@main
+    uses: guilhermelinosp/templates/.github/workflows/release.yml@main
 
   buildx:
     needs: [release]
-    uses: guilhermelinosp/ci-templates/.github/workflows/buildx.yml@main
+    uses: guilhermelinosp/templates/.github/workflows/buildx.yml@main
     secrets: inherit
 
   push:
     needs: [buildx, release]
-    uses: guilhermelinosp/ci-templates/.github/workflows/push.yml@main
+    uses: guilhermelinosp/templates/.github/workflows/push.yml@main
     secrets: inherit
     with:
       image: ${{ needs.buildx.outputs.image }}
