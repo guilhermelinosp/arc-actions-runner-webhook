@@ -34,12 +34,12 @@ jobs:
 
   buildx:
     needs: [release]
-    uses: guilhermelinosp/templates/.github/workflows/buildx.yml@main
+    uses: guilhermelinosp/templates/.github/workflows/buildx.yml@745ef1ca8288cd320b0b4dcf1485e34003945c79
     secrets: inherit
 
   push:
     needs: [buildx, release]
-    uses: guilhermelinosp/templates/.github/workflows/push.yml@main
+    uses: guilhermelinosp/templates/.github/workflows/push.yml@745ef1ca8288cd320b0b4dcf1485e34003945c79
     secrets: inherit
     with:
       image: ${{ needs.buildx.outputs.image }}
